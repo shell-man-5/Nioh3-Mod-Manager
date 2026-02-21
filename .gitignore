@@ -1,0 +1,19 @@
+# Build artifacts
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Bundled binaries (users download separately or build fetches them)
+assets/UnRAR.exe
+
+# IDE / editor
+.vs/
+.vscode/
+*.swp
+
+# Claude Code
+.claude/
