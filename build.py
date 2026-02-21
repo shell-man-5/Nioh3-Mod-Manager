@@ -11,12 +11,28 @@ Both steps are idempotent — safe to re-run for upgrades.
 """
 
 import os
+import shutil
 import subprocess
 import sys
+import time
 
 
 def build_exe():
     """Run PyInstaller with the spec file."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Pre-clean dist/ ourselves with retries (Windows sometimes holds .pyd files
+    # briefly for Defender scanning or indexing)
+    dist_dir = os.path.join(project_dir, "dist", "Nioh3ModManager")
+    if os.path.isdir(dist_dir):
+        for attempt in range(3):
+            try:
+                shutil.rmtree(dist_dir)
+                break
+            except PermissionError:
+                print(f"dist/ locked, retrying in 2s... ({attempt + 1}/3)")
+                time.sleep(2)
+
     cmd = [
         sys.executable,
         "-m",

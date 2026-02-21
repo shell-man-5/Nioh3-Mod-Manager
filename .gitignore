@@ -1,6 +1,7 @@
 # Build artifacts
 dist/
 build/
+Nioh3ModManager.zip
 
 # Python
 __pycache__/
