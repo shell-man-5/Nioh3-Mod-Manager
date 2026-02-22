@@ -3,6 +3,7 @@ Nioh 3 Mod Manager - GUI (PySide6)
 """
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
@@ -205,8 +206,9 @@ class SettingsDialog(QDialog):
 # ── Main Window ───────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, logger: logging.Logger | None = None):
         super().__init__()
+        self._logger = logger or logging.getLogger("nioh3modmanager")
         self.setWindowTitle("Nioh 3 Mod Manager")
         self.setMinimumSize(900, 600)
 
@@ -340,6 +342,7 @@ class MainWindow(QMainWindow):
 
     def _append_log(self, msg: str):
         self.log_text.appendPlainText(msg)
+        self._logger.info(msg)
 
     # ── Refresh ───────────────────────────────────────────────────────
 
@@ -540,11 +543,11 @@ class MainWindow(QMainWindow):
 
 # ── Entry Point ───────────────────────────────────────────────────────
 
-def main():
+def main(logger: logging.Logger | None = None):
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    window = MainWindow()
+    window = MainWindow(logger=logger)
     window.show()
 
     sys.exit(app.exec())
