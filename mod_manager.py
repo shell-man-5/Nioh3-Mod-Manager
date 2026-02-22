@@ -15,33 +15,20 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Callable, Optional
 
-# Optional 7z/rar support
-try:
-    import py7zr
+from conflict_detection import find_conflicts
 
-    HAS_7Z = True
-except ImportError:
-    HAS_7Z = False
+import py7zr
+import rarfile
 
-try:
-    import rarfile
+# Point rarfile at UnRAR.exe — frozen exe uses _MEIPASS, dev uses assets/
+if getattr(sys, "frozen", False):
+    _unrar = Path(sys._MEIPASS) / "UnRAR.exe"
+else:
+    _unrar = Path(__file__).parent / "assets" / "UnRAR.exe"
+if _unrar.exists():
+    rarfile.UNRAR_TOOL = str(_unrar)
 
-    HAS_RAR = True
-except ImportError:
-    HAS_RAR = False
-
-# When running as a frozen PyInstaller exe, point rarfile at the bundled UnRAR.exe
-if HAS_RAR and getattr(sys, "frozen", False):
-    _bundled_unrar = Path(sys._MEIPASS) / "UnRAR.exe"
-    if _bundled_unrar.exists():
-        rarfile.UNRAR_TOOL = str(_bundled_unrar)
-
-
-SUPPORTED_EXTENSIONS = {".zip"}
-if HAS_7Z:
-    SUPPORTED_EXTENSIONS.add(".7z")
-if HAS_RAR:
-    SUPPORTED_EXTENSIONS.add(".rar")
+SUPPORTED_EXTENSIONS = {".zip", ".7z", ".rar"}
 
 CORE_RDB_FILES = ("system.rdb", "root.rdb")
 CORE_RDB_BACKUPS = ("system.rdb.original", "root.rdb.original")
@@ -142,10 +129,10 @@ class ModManager:
         if ext == ".zip":
             with zipfile.ZipFile(filepath, "r") as zf:
                 names = zf.namelist()
-        elif ext == ".7z" and HAS_7Z:
+        elif ext == ".7z":
             with py7zr.SevenZipFile(filepath, "r") as sz:
                 names = sz.getnames()
-        elif ext == ".rar" and HAS_RAR:
+        elif ext == ".rar":
             with rarfile.RarFile(filepath, "r") as rf:
                 names = [info.filename for info in rf.infolist()]
 
@@ -163,12 +150,12 @@ class ModManager:
                 for m in members:
                     zf.extract(m, dest)
                     extracted.append(dest / m)
-        elif ext == ".7z" and HAS_7Z:
+        elif ext == ".7z":
             with py7zr.SevenZipFile(filepath, "r") as sz:
                 sz.extract(dest, targets=members)
                 for m in members:
                     extracted.append(dest / m)
-        elif ext == ".rar" and HAS_RAR:
+        elif ext == ".rar":
             with rarfile.RarFile(filepath, "r") as rf:
                 for m in members:
                     rf.extract(m, dest)
@@ -368,6 +355,19 @@ class ModManager:
                 f"A mod from {archive.filepath.name} is already installed. "
                 f"Uninstall it first.",
             )
+
+        # Conflict check: block install if any installed mod patches the same game assets
+        conflicts = find_conflicts(archive, option, self.installed, self.game_package_dir)
+        if conflicts:
+            lines = []
+            for fname, overlap in conflicts:
+                samples = ", ".join(sorted(f"0x{h:08x}" for h in list(overlap)[:5]))
+                suffix = f" (+{len(overlap) - 5} more)" if len(overlap) > 5 else ""
+                lines.append(f"  \u2022 {Path(fname).stem}  ({len(overlap)} asset(s): {samples}{suffix})")
+            msg = "Cannot install: conflicts with installed mod(s):\n\n"
+            msg += "\n".join(lines)
+            msg += "\n\nUninstall the conflicting mod(s) before proceeding."
+            return False, msg
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
