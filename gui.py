@@ -206,6 +206,10 @@ class SettingsDialog(QDialog):
 # ── Main Window ───────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
+    # Signal used to safely append log messages from background threads.
+    # Qt automatically queues cross-thread signal emissions to the main thread.
+    _log_message = Signal(str)
+
     def __init__(self, logger: logging.Logger | None = None):
         super().__init__()
         self._logger = logger or logging.getLogger("nioh3modmanager")
@@ -224,6 +228,7 @@ class MainWindow(QMainWindow):
         self.worker: Optional[WorkerThread] = None
 
         self._build_ui()
+        self._log_message.connect(self.log_text.appendPlainText)
         self._try_init_manager()
 
     def _build_ui(self):
@@ -341,8 +346,8 @@ class MainWindow(QMainWindow):
     # ── Logging ───────────────────────────────────────────────────────
 
     def _append_log(self, msg: str):
-        self.log_text.appendPlainText(msg)
         self._logger.info(msg)
+        self._log_message.emit(msg)  # thread-safe: Qt queues this to the main thread
 
     # ── Refresh ───────────────────────────────────────────────────────
 

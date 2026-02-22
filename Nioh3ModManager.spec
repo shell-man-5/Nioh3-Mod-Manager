@@ -102,6 +102,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
+    icon="assets/mod_manager_logo.ico",
 )
 
 coll = COLLECT(
