@@ -85,7 +85,13 @@ my_mod.zip
     └── 0xffaabb00.yumiamod.json
 ```
 
-Files at the archive root (no `package/` subdir) are also accepted as a fallback.
+Files at the archive root are also accepted (no `package/` subdir needed):
+
+```
+my_mod.zip
+├── 0xffaabb00.fdata
+└── 0xffaabb00.yumiamod.json
+```
 
 </details>
 

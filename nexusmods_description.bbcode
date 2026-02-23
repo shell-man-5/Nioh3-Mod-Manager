@@ -1,0 +1,122 @@
+[b]Credits[/b]
+Huge thanks to eArmada8 for creating the yumia_fdata_tools project. This mod manager is a GUI wrapper around their yumia_mod_insert_into_rdb.exe tool. None of this would be possible without their work reverse-engineering the fdata/rdb format.
+
+[b]What is this?[/b]
+A standalone GUI application for installing and uninstalling Nioh 3 cosmetic mods.
+Please note that this manager does not manage DLL-based mods.
+
+[b]Features[/b]
+[list]
+[*]Scans a folder of mod archives (.zip, .7z, .rar) and lists them in a clean UI
+[*]Detects multi-option mods (e.g. color variants) and lets you pick which one to install
+[*]Supports multi-feature mods via nioh3modmanifest.json — independently configure each feature (e.g. armor style AND trim color) in a single install step
+[*]Extracts files to the game's package directory
+[*]Runs yumia to patch the RDB files
+[*]Conflict detection: warns you before installing a mod that replaces the same assets as one already installed
+[*]Tracks what's installed so you know what's active
+[*]Clean uninstall: removes mod files, restores RDB backups, re-patches remaining mods
+[*]Supports standard mods (with package/ subdirectory), loose mods (files at archive root), and multi-feature manifest mods
+[/list]
+
+[b]Installation[/b]
+
+[b]Step 1: Download the yumia patcher[/b]
+Download yumia_mod_insert_into_rdb.exe and place it in your game's package folder:
+[code]C:\Program Files (x86)\Steam\steamapps\common\Nioh3\package\yumia_mod_insert_into_rdb.exe[/code]
+
+[b]Step 2: Create a mods folder[/b]
+Create a folder anywhere to store your downloaded mod archives. For example:
+[code]C:\Nioh3_mods[/code]
+Download mods from Nexus and drop the archive files (.zip, .7z, .rar) into this folder. Don't extract them — the mod manager reads the archives directly.
+
+[b]Step 3: Extract and run the mod manager[/b]
+Download the main file from this page, extract the zip, and run Nioh3ModManager.exe.
+On first launch, click Settings and set:
+[list]
+[*]Mods Directory: the folder from Step 2 (e.g. C:\Nioh3_mods)
+[*]Game Package Directory: your Nioh 3 package folder (e.g. C:\Program Files (x86)\Steam\steamapps\common\Nioh3\package)
+[/list]
+Your mods will appear in the list. Select one and click Install.
+
+[b]Requirements[/b]
+[list]
+[*]Windows 10 or 11 (64-bit)
+[*]Nioh 3 (Steam)
+[*]yumia_mod_insert_into_rdb.exe in your game's package folder (see Step 1)
+[/list]
+
+[b]For Mod Authors[/b]
+
+Package your mod as a .zip, .7z, or .rar archive. The manager supports three layouts:
+
+[b]Simple mod — one set of files, no choices[/b]
+Place your files inside a package/ subdirectory:
+
+[code]
+my_mod.zip
+└── package/
+    ├── 0xffaabb00.fdata
+    └── 0xffaabb00.yumiamod.json
+[/code]
+
+Files at the archive root are also accepted (no package/ subdir needed):
+
+[code]
+my_mod.zip
+├── 0xffaabb00.fdata
+└── 0xffaabb00.yumiamod.json
+[/code]
+
+[b]Mod with exclusive options — user picks exactly one variant[/b]
+Put each variant in its own named subdirectory, each containing a package/ folder:
+
+[code]
+armor_colors.zip
+├── Red/
+│   └── package/
+│       └── 0xffaabb00.fdata
+├── Blue/
+│   └── package/
+│       └── 0xffaabb00.fdata
+└── Gold/
+    └── package/
+        └── 0xffaabb00.fdata
+[/code]
+
+The subdirectory name (Red, Blue, Gold) becomes the label shown in the UI. The user installs exactly one variant.
+
+[b]Multi-feature mod — independent per-feature selections, with optional shared files[/b]
+Add a nioh3modmanifest.json at the archive root:
+
+[code]
+{
+  "mod_manager_version": "1.0",
+  "common_files_dir": "common",
+  "features": [
+    { "name": "Armor Style", "directory": "armor_style", "optional": false },
+    { "name": "Trim Color",  "directory": "trim_color",  "optional": true  }
+  ]
+}
+[/code]
+
+Matching archive layout:
+
+[code]
+my_mod.zip
+├── nioh3modmanifest.json
+├── common/              ← always installed (omit if not needed)
+│   └── ...
+├── armor_style/         ← matches "directory" in the manifest
+│   ├── Heavy/           ← becomes an option in the UI
+│   └── Light/
+└── trim_color/          ← optional: user may skip
+    ├── Gold/
+    └── Silver/
+[/code]
+
+[list]
+[*]"name" is the human-readable label shown in the UI
+[*]Each feature's subdirectory names become the available options
+[*]Common files are installed first; selected feature files are layered on top (feature wins on filename collision)
+[*]Features marked "optional": true can be skipped by the user
+[/list]
