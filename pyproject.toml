@@ -6,9 +6,13 @@ readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
     "py7zr>=1.1.0",
+    "pydantic>=2.0",
     "pyside6>=6.10.2",
     "rarfile>=4.2",
 ]
 
 [dependency-groups]
-dev = ["pyinstaller>=6.0"]
+dev = ["pyinstaller>=6.0", "pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

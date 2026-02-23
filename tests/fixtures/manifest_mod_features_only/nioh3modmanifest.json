@@ -1,0 +1,4 @@
+{
+    "mod_manager_version": "1.0",
+    "features": [{"name": "Armor Style", "directory": "armor_style", "optional": false}]
+}

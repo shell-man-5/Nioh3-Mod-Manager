@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from conflict_detection import find_conflicts
+from manifest_schema import MANIFEST_FILENAME, ModManifest, parse_manifest
 
 import py7zr
 import rarfile
@@ -51,6 +52,9 @@ class ModArchive:
     filepath: Path
     name: str  # Archive filename without extension
     options: list[ModOption] = field(default_factory=list)
+    manifest: ModManifest | None = None
+    manifest_options: dict[str, list[str]] = field(default_factory=dict)
+    # manifest_options: feature.name -> sorted list of discovered option names
 
 
 @dataclass
@@ -84,7 +88,7 @@ class ModManager:
         self.mods_dir = Path(mods_dir)
         self.game_package_dir = Path(game_package_dir)
         self.yumia_exe = self.game_package_dir / YUMIA_EXE_NAME
-        self.manifest_path = self.mods_dir / ".nioh3_modmanager_manifest.json"
+        self.installed_mods_manifest_path = self.mods_dir / ".nioh3_modmanager_manifest.json"
         self._log_cb = log_callback or print
         self._yumia_prompt_cb = yumia_prompt_callback
 
@@ -97,29 +101,45 @@ class ModManager:
     def log(self, msg: str):
         self._log_cb(msg)
 
-    # ── Manifest Persistence ──────────────────────────────────────────
+    # ── Installed Mods Tracking ───────────────────────────────────────
 
-    def _load_manifest(self):
-        if self.manifest_path.exists():
+    def _load_installed_mods_manifest(self):
+        if self.installed_mods_manifest_path.exists():
             try:
-                data = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+                data = json.loads(self.installed_mods_manifest_path.read_text(encoding="utf-8"))
                 self.installed = {}
                 for key, rec in data.items():
                     self.installed[key] = InstalledModRecord(**rec)
-                self.log(f"Loaded manifest: {len(self.installed)} mod(s) recorded")
+                self.log(f"Loaded installed mods: {len(self.installed)} mod(s) recorded")
             except Exception as e:
-                self.log(f"Warning: Could not load manifest: {e}")
+                self.log(f"Warning: Could not load installed mods record: {e}")
                 self.installed = {}
         else:
             self.installed = {}
 
-    def _save_manifest(self):
+    def _save_installed_mods_manifest(self):
         data = {key: asdict(rec) for key, rec in self.installed.items()}
-        self.manifest_path.write_text(
+        self.installed_mods_manifest_path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
     # ── Archive Content Listing ───────────────────────────────────────
+
+    @staticmethod
+    def _read_archive_member(filepath: Path, member: str) -> bytes:
+        """Read a single member from an archive into bytes without extracting."""
+        ext = filepath.suffix.lower()
+        if ext == ".zip":
+            with zipfile.ZipFile(filepath, "r") as zf:
+                return zf.read(member)
+        elif ext == ".7z":
+            with py7zr.SevenZipFile(filepath, "r") as sz:
+                results = sz.read(targets=[member])
+                return results[member].read()
+        elif ext == ".rar":
+            with rarfile.RarFile(filepath, "r") as rf:
+                return rf.read(member)
+        raise ValueError(f"Unsupported archive format: {ext}")
 
     @staticmethod
     def _list_archive_names(filepath: Path) -> list[str]:
@@ -177,12 +197,19 @@ class ModManager:
                 continue
             try:
                 archive = self._analyze_archive(f)
-                if archive.options:
+                if archive.options or archive.manifest:
                     self.archives.append(archive)
-                    option_names = [o.name for o in archive.options]
-                    self.log(
-                        f"  {f.name}: {len(archive.options)} option(s) — {option_names}"
-                    )
+                    if archive.manifest:
+                        feat_names = [ft.name for ft in archive.manifest.features]
+                        self.log(
+                            f"  {f.name}: manifest mod — "
+                            f"{len(archive.manifest.features)} feature(s): {feat_names}"
+                        )
+                    else:
+                        option_names = [o.name for o in archive.options]
+                        self.log(
+                            f"  {f.name}: {len(archive.options)} option(s) — {option_names}"
+                        )
                 else:
                     self.log(f"  {f.name}: no mod files found, skipping")
             except Exception as e:
@@ -196,6 +223,34 @@ class ModManager:
         names = self._list_archive_names(filepath)
         if not names:
             return archive
+
+        # ── Manifest detection ────────────────────────────────────────────
+        # If the archive contains nioh3modmanifest.json, parse it and return
+        # early — manifest mods don't use package/ directories.
+        if MANIFEST_FILENAME in names:
+            try:
+                data = self._read_archive_member(filepath, MANIFEST_FILENAME)
+                manifest = parse_manifest(data)
+                archive.manifest = manifest
+                for feature in manifest.features:
+                    prefix = feature.directory + "/"
+                    opts: set[str] = set()
+                    for name in names:
+                        if name.startswith(prefix) and not name.endswith("/"):
+                            rest = name[len(prefix):]
+                            parts = rest.split("/")
+                            if len(parts) >= 2:  # option_name/file — not a bare file
+                                opts.add(parts[0])
+                    archive.manifest_options[feature.name] = sorted(opts)
+                return archive
+            except Exception as exc:
+                self.log(
+                    f"  Warning: manifest parse failed in {filepath.name}: {exc}"
+                    " — falling back to package/ scan"
+                )
+                archive.manifest = None
+                archive.manifest_options = {}
+                # fall through to package/ scanning
 
         # Find all paths that contain a "package" directory with files inside.
         # Group by the prefix up to and including "package/".
@@ -259,7 +314,7 @@ class ModManager:
     # ── Installation Status ───────────────────────────────────────────
 
     def check_installed_status(self):
-        self._load_manifest()
+        self._load_installed_mods_manifest()
 
         stale_keys = []
         for key, rec in self.installed.items():
@@ -277,7 +332,7 @@ class ModManager:
             del self.installed[key]
 
         if stale_keys:
-            self._save_manifest()
+            self._save_installed_mods_manifest()
 
         self.log(f"Verified {len(self.installed)} mod(s) currently installed")
 
@@ -357,7 +412,8 @@ class ModManager:
             )
 
         # Conflict check: block install if any installed mod patches the same game assets
-        conflicts = find_conflicts(archive, option, self.installed, self.game_package_dir)
+        members = [option.archive_internal_path + pf for pf in option.package_files]
+        conflicts = find_conflicts(archive, members, self.installed, self.game_package_dir)
         if conflicts:
             lines = []
             for fname, overlap in conflicts:
@@ -417,11 +473,137 @@ class ModManager:
             option_name=option.name,
             installed_files=installed_files,
         )
-        self._save_manifest()
+        self._save_installed_mods_manifest()
 
         self.log(
             f"  Successfully installed '{option.name}' ({len(installed_files)} files)"
         )
+        return True, f"Installed {len(installed_files)} file(s)"
+
+    # ── Install (manifest) ────────────────────────────────────────────
+
+    def install_manifest_mod(
+        self,
+        archive: ModArchive,
+        feature_selections: dict[str, str | None],
+        auto_yes_yumia: bool = False,
+    ) -> tuple[bool, str]:
+        """Install a manifest-based mod with per-feature option selections.
+
+        ``feature_selections`` maps each feature name to the chosen option name,
+        or ``None`` to skip an optional feature.
+        """
+        manifest = archive.manifest
+        assert manifest is not None, "install_manifest_mod called on non-manifest archive"
+
+        self.log(f"Installing manifest mod {archive.filepath.name}...")
+
+        if archive.filepath.name in self.installed:
+            return (
+                False,
+                f"A mod from {archive.filepath.name} is already installed. "
+                "Uninstall it first.",
+            )
+
+        # Validate required features all have a selection
+        for feature in manifest.features:
+            if not feature.optional and feature_selections.get(feature.name) is None:
+                return False, f"Required feature '{feature.name}' has no option selected."
+
+        # Build dest_to_member: dest_filename -> archive_member_path
+        # Common files first, then each selected feature (feature wins on collision).
+        names_set = set(self._list_archive_names(archive.filepath))
+        dest_to_member: dict[str, str] = {}
+
+        if manifest.common_files_dir:
+            prefix = manifest.common_files_dir + "/"
+            for name in names_set:
+                if name.startswith(prefix) and not name.endswith("/"):
+                    dest_file = name[len(prefix):]
+                    if dest_file:
+                        dest_to_member[dest_file] = name
+
+        for feature in manifest.features:
+            chosen = feature_selections.get(feature.name)
+            if chosen is None:
+                continue
+            prefix = f"{feature.directory}/{chosen}/"
+            for name in names_set:
+                if name.startswith(prefix) and not name.endswith("/"):
+                    dest_file = name[len(prefix):]
+                    if dest_file:
+                        dest_to_member[dest_file] = name  # overwrites common on collision
+
+        if not dest_to_member:
+            return False, "No files found for the selected options."
+
+        # Conflict check
+        archive_members = list(dest_to_member.values())
+        conflicts = find_conflicts(archive, archive_members, self.installed, self.game_package_dir)
+        if conflicts:
+            lines = []
+            for fname, overlap in conflicts:
+                samples = ", ".join(sorted(f"0x{h:08x}" for h in list(overlap)[:5]))
+                suffix = f" (+{len(overlap) - 5} more)" if len(overlap) > 5 else ""
+                lines.append(
+                    f"  \u2022 {Path(fname).stem}  ({len(overlap)} asset(s): {samples}{suffix})"
+                )
+            msg = "Cannot install: conflicts with installed mod(s):\n\n"
+            msg += "\n".join(lines)
+            msg += "\n\nUninstall the conflicting mod(s) before proceeding."
+            return False, msg
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            try:
+                self._extract_from_archive(archive.filepath, archive_members, tmppath)
+            except Exception as e:
+                return False, f"Extraction failed: {e}"
+
+            installed_files = []
+            for dest_file, archive_member in dest_to_member.items():
+                src = tmppath / archive_member.replace("/", os.sep)
+                dst = self.game_package_dir / dest_file.replace("/", os.sep)
+
+                if not src.exists():
+                    self.log(f"  WARNING: Expected file not found after extraction: {src}")
+                    continue
+
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                installed_files.append(dest_file)
+                self.log(f"  Copied: {dest_file}")
+
+        if not installed_files:
+            return False, "No files were installed."
+
+        self.log("  Running yumia to patch RDB files...")
+        success, output = self.run_yumia(auto_yes=auto_yes_yumia)
+
+        if not success:
+            self.log("  yumia failed, rolling back...")
+            for pf in installed_files:
+                fp = self.game_package_dir / pf
+                if fp.exists():
+                    fp.unlink()
+            return False, f"yumia failed: {output}"
+
+        # Build a human-readable summary of what was installed
+        parts = [
+            f"{ft.name}: {feature_selections[ft.name]}"
+            for ft in manifest.features
+            if feature_selections.get(ft.name) is not None
+        ]
+        option_summary = "; ".join(parts) if parts else "(common files only)"
+
+        self.installed[archive.filepath.name] = InstalledModRecord(
+            archive_filename=archive.filepath.name,
+            option_name=option_summary,
+            installed_files=installed_files,
+        )
+        self._save_installed_mods_manifest()
+
+        self.log(f"  Successfully installed manifest mod ({len(installed_files)} files)")
         return True, f"Installed {len(installed_files)} file(s)"
 
     # ── Uninstall ─────────────────────────────────────────────────────
@@ -468,7 +650,7 @@ class ModManager:
 
         # Step 3: Remove from manifest BEFORE re-running yumia
         del self.installed[archive_filename]
-        self._save_manifest()
+        self._save_installed_mods_manifest()
 
         # Step 4: If there are other mods still installed, re-run yumia
         if self.installed:

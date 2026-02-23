@@ -4,7 +4,16 @@ A GUI tool to manage mods for Nioh 3 (Steam version). Point it at a folder of
 mod archives, click install, done.
 
 **For users:** grab the latest release zip, extract it, run `Nioh3ModManager.exe`.
-No Python needed. The rest of this README is for developers.
+No Python needed. The rest of this README is for developers and mod authors.
+
+## Table of Contents
+
+- [How Nioh 3 Modding Works](#how-nioh-3-modding-works)
+- [Install / Uninstall Flow](#install--uninstall-flow)
+- [For Mod Authors](#for-mod-authors)
+- [Development Setup](#development-setup)
+- [Building the Executable](#building-the-executable)
+- [License](#license)
 
 ## How Nioh 3 Modding Works
 
@@ -39,9 +48,10 @@ be possible without their work reverse-engineering the fdata/rdb format.
 ### Install
 
 1. Scans your mods directory for `.zip` / `.7z` / `.rar` archives
-2. Detects installable options by finding `package/` directories inside each
-   archive (or `.fdata` / `.yumiamod.json` files at the root as a fallback)
-3. If multiple options exist (e.g. different colors/variants), lets you pick one
+2. Detects the archive's packaging format: `package/` subdirectory layout,
+   loose files at the root, or a `nioh3modmanifest.json` for multi-feature mods
+3. For option-based mods, lets you pick a variant; for multi-feature mods,
+   lets you configure each feature independently
 4. Extracts the chosen files into `Nioh3/package/`
 5. Runs `yumia_mod_insert_into_rdb.exe` to patch the RDB files
 
@@ -53,23 +63,38 @@ be possible without their work reverse-engineering the fdata/rdb format.
 
 ### Status tracking
 
-- A manifest (`.nioh3_modmanager_manifest.json`) in your mods directory tracks
-  what's installed
-- On every startup/refresh, the manifest is verified against reality — if files
+- An installed-mods record (`.nioh3_modmanager_manifest.json`) in your mods
+  directory tracks what's installed
+- On every startup/refresh, the record is verified against reality — if files
   are missing (e.g. you manually deleted them), the mod is marked as not installed
 
-## Mod Archive Structure
+## For Mod Authors
 
-The manager looks for `package/` directories inside archives:
+Package your mod as a `.zip`, `.7z`, or `.rar` archive. The manager supports
+three layouts — pick whichever fits your mod:
+
+<details>
+<summary><strong>Simple mod</strong> — one set of files, no choices</summary>
+
+Place your files inside a `package/` subdirectory:
 
 ```
-# Single-option mod (package/ at root):
-my_cool_mod.zip
+my_mod.zip
 └── package/
     ├── 0xffaabb00.fdata
     └── 0xffaabb00.yumiamod.json
+```
 
-# Multi-option mod (variants in subdirectories):
+Files at the archive root (no `package/` subdir) are also accepted as a fallback.
+
+</details>
+
+<details>
+<summary><strong>Mod with exclusive options</strong> — user picks exactly one variant</summary>
+
+Put each variant in its own named subdirectory, each containing a `package/` folder:
+
+```
 armor_colors.zip
 ├── Red/
 │   └── package/
@@ -80,17 +105,55 @@ armor_colors.zip
 └── Gold/
     └── package/
         └── 0xffaabb00.fdata
-
-# Loose mod (no package/ dir — files at archive root):
-simple_mod.zip
-├── 0xffffcccc.fdata
-└── 0xffffcccc.yumiamod.json
 ```
 
-For multi-option mods, the parent directory name (Red, Blue, Gold) becomes the
-option label shown in the UI. Loose mods (no `package/` dir) are detected by
-looking for `.fdata` / `.yumiamod.json` files and treated as a single default
-option.
+The subdirectory name (Red, Blue, Gold) becomes the label shown in the UI.
+The user installs exactly one variant.
+
+</details>
+
+<details>
+<summary><strong>Multi-feature mod</strong> — independent per-feature selections, with optional shared files</summary>
+
+Add a `nioh3modmanifest.json` at the archive root:
+
+```json
+{
+  "mod_manager_version": "1.0",
+  "common_files_dir": "common",
+  "features": [
+    { "name": "Armor Style", "directory": "armor_style", "optional": false },
+    { "name": "Skin",        "directory": "skin",        "optional": true  }
+  ]
+}
+```
+
+Matching archive layout:
+
+```
+my_mod.zip
+├── nioh3modmanifest.json
+├── common/              ← always installed (omit if not needed)
+│   └── ...
+├── armor_style/         ← matches "directory" in the manifest
+│   ├── Heavy/           ← becomes an option in the UI
+│   │   └── ...
+│   └── Light/
+│       └── ...
+└── skin/                ← optional: user may skip
+    ├── Normal/
+    │   └── ...
+    └── Wet/
+        └── ...
+```
+
+- `name` is the human-readable label shown in the UI.
+- Each feature's subdirectory names become the available options.
+- Common files are installed first; selected feature files are layered on top
+  (feature wins on filename collision).
+- Features marked `"optional": true` can be skipped by the user.
+
+</details>
 
 ## Development Setup
 
@@ -104,7 +167,7 @@ uv sync
 uv run python main.py
 
 # Run tests
-uv run python test_scanning.py
+uv run pytest tests/
 ```
 
 On first launch, click **Settings** to configure:

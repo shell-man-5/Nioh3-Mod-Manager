@@ -9,7 +9,7 @@ up with two competing entries for the same asset; whichever yumia wrote last
 
 Public API
 ----------
-find_conflicts(archive, option, installed, game_package_dir)
+find_conflicts(archive, archive_members, installed, game_package_dir)
     -> list of (archive_filename, set_of_overlapping_name_hashes)
 """
 
@@ -25,7 +25,7 @@ import py7zr
 import rarfile
 
 if TYPE_CHECKING:
-    from mod_manager import InstalledModRecord, ModArchive, ModOption
+    from mod_manager import InstalledModRecord, ModArchive
 
 _log = logging.getLogger(__name__)
 
@@ -53,17 +53,16 @@ def _read_archive_member(filepath: Path, member: str) -> bytes:
 
 
 def _name_hashes_from_archive(
-    archive: ModArchive, option: ModOption
+    filepath: Path, archive_members: list[str]
 ) -> set[int]:
-    """Return the set of name_hash values from all .yumiamod.json files inside
-    the given archive option (read directly from the archive, no temp files)."""
+    """Return the set of name_hash values from all .yumiamod.json files in
+    the given list of archive member paths (read directly from the archive)."""
     hashes: set[int] = set()
-    for pf in option.package_files:
-        if not pf.endswith(".yumiamod.json"):
+    for member in archive_members:
+        if not member.endswith(".yumiamod.json"):
             continue
-        member = option.archive_internal_path + pf
         try:
-            data = _read_archive_member(archive.filepath, member)
+            data = _read_archive_member(filepath, member)
             for entry in json.loads(data).get("files", []):
                 hashes.add(entry["name_hash"])
         except Exception as exc:
@@ -96,17 +95,20 @@ def _name_hashes_from_disk(
 
 def find_conflicts(
     archive: ModArchive,
-    option: ModOption,
+    archive_members: list[str],
     installed: dict[str, InstalledModRecord],
     game_package_dir: Path,
 ) -> list[tuple[str, set[int]]]:
-    """Check whether installing *option* from *archive* would conflict with any
-    currently-installed mod.
+    """Check whether installing the given archive members would conflict with
+    any currently-installed mod.
+
+    ``archive_members`` is the flat list of archive-internal paths that would
+    be read (e.g. ``["package/foo.fdata", "package/foo.yumiamod.json"]``).
 
     Returns a list of ``(archive_filename, overlapping_name_hashes)`` tuples,
     one per conflicting installed mod.  An empty list means no conflicts.
     """
-    incoming = _name_hashes_from_archive(archive, option)
+    incoming = _name_hashes_from_archive(archive.filepath, archive_members)
     if not incoming:
         return []
 

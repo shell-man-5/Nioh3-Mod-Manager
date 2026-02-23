@@ -1,0 +1,5 @@
+{
+    "mod_manager_version": "1.0",
+    "common_files_dir": "common",
+    "features": [{"name": "Armor Style", "directory": "armor_style", "optional": false}]
+}

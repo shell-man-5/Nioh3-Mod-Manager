@@ -27,6 +27,10 @@ a = Analysis(
         "Cryptodome.Cipher._mode_ecb",
         "Cryptodome.Cipher._mode_cbc",
         "Cryptodome.Random",
+        # pydantic (manifest schema validation)
+        "pydantic",
+        "pydantic.v1",
+        "pydantic_core",
     ],
     hookspath=[],
     hooksconfig={},

@@ -1,0 +1,4 @@
+{
+    "mod_manager_version": "1.0",
+    "features": [{"name": "Hair Style", "directory": "hair_style", "optional": true}]
+}

@@ -114,7 +114,57 @@ class OptionDialog(QDialog):
         return self.combo.currentData()
 
 
-# ── Yumia Prompt Dialog ──────────────────────────────────────────────
+# ── Manifest Selection Dialog ─────────────────────────────────────────
+
+SKIP_LABEL = "— skip —"
+
+
+class FeatureSelectionDialog(QDialog):
+    """Dialog for choosing per-feature options when installing a manifest mod."""
+
+    def __init__(self, archive: ModArchive, parent=None):
+        super().__init__(parent)
+        manifest = archive.manifest
+        assert manifest is not None
+
+        self.setWindowTitle(f"Configure — {archive.name}")
+        self.setMinimumWidth(420)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f"<b>{archive.name}</b>"))
+
+        self._combos: dict[str, QComboBox] = {}  # feature.name -> combo
+
+        for feature in manifest.features:
+            options = archive.manifest_options.get(feature.name, [])
+            required_text = "" if feature.optional else "  <small><i>(required)</i></small>"
+            optional_text = "  <small><i>(optional)</i></small>" if feature.optional else ""
+            header = QLabel(f"<b>{feature.name}</b>{required_text}{optional_text}")
+            header.setTextFormat(Qt.RichText)
+            layout.addWidget(header)
+
+            combo = QComboBox()
+            if feature.optional:
+                combo.addItem(SKIP_LABEL, userData=None)
+            for opt_name in options:
+                file_count = len(options)
+                combo.addItem(opt_name, userData=opt_name)
+            self._combos[feature.name] = combo
+            layout.addWidget(combo)
+
+        layout.addStretch()
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Install")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_selections(self) -> dict[str, str | None]:
+        """Return {feature_name: chosen_option_name_or_None}."""
+        return {name: combo.currentData() for name, combo in self._combos.items()}
+
+
+# ──Yumia Prompt Dialog ──────────────────────────────────────────────
 
 class YumiaPromptDialog(QDialog):
     """Dialog shown when yumia detects changed RDB files."""
@@ -414,7 +464,23 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # Select option
+        if archive.manifest is not None:
+            self._install_with_manifest(archive)
+        else:
+            self._install_legacy(archive)
+
+    def _install_with_manifest(self, archive):
+        dlg = FeatureSelectionDialog(archive, self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        self._run_in_worker(
+            self.manager.install_manifest_mod,
+            archive,
+            dlg.get_selections(),
+            auto_yes_yumia=self.auto_yes_yumia,
+        )
+
+    def _install_legacy(self, archive):
         if len(archive.options) == 1:
             option = archive.options[0]
         else:
@@ -424,7 +490,6 @@ class MainWindow(QMainWindow):
             option = dlg.selected_option()
             if not option:
                 return
-
         self._run_in_worker(
             self.manager.install_mod,
             archive,
