@@ -51,7 +51,7 @@ import logging
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 MANIFEST_FILENAME = "nioh3modmanifest.json"
-CURRENT_VERSION = (1, 0)  # (major, minor) supported by this build
+CURRENT_VERSION = (1, 1)  # (major, minor) supported by this build
 
 _log = logging.getLogger(__name__)
 
@@ -79,6 +79,10 @@ class ModManifest(BaseModel):
     """Parsed contents of a nioh3modmanifest.json file."""
 
     mod_manager_version: str
+    mod_name: str | None = None
+    author: str | None = None
+    version: str | None = None
+    url: str | None = None
     common_files_dir: str | None = None
     features: list[ManifestFeature] = Field(default_factory=list)
 

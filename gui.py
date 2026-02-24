@@ -4,6 +4,7 @@ Nioh 3 Mod Manager - GUI (PySide6)
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -342,6 +344,30 @@ class MainWindow(QMainWindow):
         action_row.addWidget(self.open_mods_btn)
 
         top_layout.addLayout(action_row)
+
+        # Mod Info panel — hidden until a manifest mod with metadata is selected
+        self.info_box = QGroupBox("Mod Info")
+        self._info_form = QFormLayout(self.info_box)
+        self._info_form.setContentsMargins(6, 4, 6, 4)
+        self._info_form.setSpacing(3)
+        info_form = self._info_form
+
+        self._info_archive_row = QLabel()
+        self._info_author_row  = QLabel()
+        self._info_version_row = QLabel()
+        self._info_url_row     = QLabel()
+        self._info_url_row.setOpenExternalLinks(True)
+
+        info_form.addRow("Archive:",  self._info_archive_row)
+        info_form.addRow("Author:",   self._info_author_row)
+        info_form.addRow("Version:",  self._info_version_row)
+        info_form.addRow("Mod page:", self._info_url_row)
+
+        self.info_box.setVisible(False)
+        top_layout.addWidget(self.info_box)
+
+        self.tree.itemSelectionChanged.connect(self._on_selection_changed)
+
         splitter.addWidget(top_widget)
 
         # Bottom: Log
@@ -420,7 +446,14 @@ class MainWindow(QMainWindow):
 
         for archive in self.manager.archives:
             item = QTreeWidgetItem()
-            item.setText(0, archive.name)
+            m = archive.manifest
+            if m and m.mod_name and m.version:
+                label = f"{m.mod_name} \u2014 {m.version}"
+            elif m and m.mod_name:
+                label = m.mod_name
+            else:
+                label = archive.name
+            item.setText(0, label)
             item.setData(0, Qt.UserRole, archive)
 
             is_inst = self.manager.is_installed(archive.filepath.name)
@@ -434,15 +467,53 @@ class MainWindow(QMainWindow):
                 item.setForeground(1, QColor("#2e7d32"))
             else:
                 item.setText(1, "Not installed")
-                n_options = len(archive.options)
-                if n_options == 1:
-                    item.setText(2, f"1 option: {archive.options[0].name}")
+                if archive.manifest is not None:
+                    feature_names = ", ".join(f.name for f in archive.manifest.features)
+                    item.setText(2, feature_names or "manifest mod")
                 else:
-                    names = ", ".join(o.name for o in archive.options)
-                    item.setText(2, f"{n_options} options: {names}")
+                    n_options = len(archive.options)
+                    if n_options == 1:
+                        item.setText(2, f"1 option: {archive.options[0].name}")
+                    else:
+                        names = ", ".join(o.name for o in archive.options)
+                        item.setText(2, f"{n_options} options: {names}")
                 item.setForeground(1, QColor("#757575"))
 
             self.tree.addTopLevelItem(item)
+
+    # ── Mod Info panel ────────────────────────────────────────────────
+
+    def _on_selection_changed(self):
+        item = self.tree.currentItem()
+        archive: ModArchive | None = None
+        if item:
+            archive = item.data(0, Qt.UserRole)
+        m = archive.manifest if archive else None
+
+        archive_stem = archive.filepath.stem if (archive and m and m.mod_name) else None
+        author  = m.author  if m else None
+        version = m.version if m else None
+        url     = m.url     if m else None
+
+        if not any((archive_stem, author, version, url)):
+            self.info_box.setVisible(False)
+            return
+
+        self.info_box.setVisible(True)
+
+        def _set_row(widget: QLabel, value: str | None) -> None:
+            lbl = self._info_form.labelForField(widget)
+            visible = bool(value)
+            widget.setVisible(visible)
+            if lbl:
+                lbl.setVisible(visible)
+            if value:
+                widget.setText(value)
+
+        _set_row(self._info_archive_row, archive_stem)
+        _set_row(self._info_author_row,  author)
+        _set_row(self._info_version_row, version)
+        _set_row(self._info_url_row, f'<a href="{url}">{url}</a>' if url else None)
 
     # ── Install ───────────────────────────────────────────────────────
 
@@ -585,7 +656,7 @@ class MainWindow(QMainWindow):
             import subprocess as sp
 
             if sys.platform == "win32":
-                sp.Popen(["explorer", self.mods_dir])
+                os.startfile(str(self.mods_dir))
             elif sys.platform == "linux":
                 sp.Popen(["xdg-open", self.mods_dir])
             elif sys.platform == "darwin":

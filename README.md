@@ -126,6 +126,10 @@ Add a `nioh3modmanifest.json` at the archive root:
 ```json
 {
   "mod_manager_version": "1.0",
+  "mod_name": "Awesome Armor Pack",
+  "author": "YourName",
+  "version": "1.0",
+  "url": "https://www.nexusmods.com/nioh3/mods/1",
   "common_files_dir": "common",
   "features": [
     { "name": "Armor Style", "directory": "armor_style", "optional": false },
@@ -153,6 +157,8 @@ my_mod.zip
         └── ...
 ```
 
+- `mod_name` is optional — if set, shown in the mod list (with `version` appended if present).
+- `author`, `version`, `url` are optional — shown in a detail panel when the mod is selected. `url` is a clickable link.
 - `name` is the human-readable label shown in the UI.
 - Each feature's subdirectory names become the available options.
 - Common files are installed first; selected feature files are layered on top

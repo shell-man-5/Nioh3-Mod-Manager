@@ -5,6 +5,7 @@ Handles archive scanning, mod installation/uninstallation, and status tracking.
 """
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ import zipfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Callable, Optional
+
+_log = logging.getLogger(__name__)
 
 from conflict_detection import find_conflicts
 from manifest_schema import MANIFEST_FILENAME, ModManifest, parse_manifest
@@ -232,6 +235,13 @@ class ModManager:
                 data = self._read_archive_member(filepath, MANIFEST_FILENAME)
                 manifest = parse_manifest(data)
                 archive.manifest = manifest
+                _log.debug(
+                    "Loaded manifest v%s for %s",
+                    manifest.mod_manager_version,
+                    filepath.name,
+                )
+                if manifest.mod_name:
+                    archive.name = manifest.mod_name
                 for feature in manifest.features:
                     prefix = feature.directory + "/"
                     opts: set[str] = set()

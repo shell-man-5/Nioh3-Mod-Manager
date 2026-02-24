@@ -340,6 +340,69 @@ def test_already_installed_blocked(dirs, mock_yumia):
     assert "already installed" in msg.lower()
 
 
+# ── mod_name override ─────────────────────────────────────────────────────────
+
+def test_mod_name_overrides_filename(dirs):
+    """manifest mod_name is shown instead of the archive filename."""
+    mods_dir, game_pkg_dir = dirs
+    zip_fixture("manifest_mod_with_name", mods_dir)
+    manager = make_manager(mods_dir, game_pkg_dir)
+    archives = manager.scan_archives()
+
+    assert len(archives) == 1
+    assert archives[0].name == "My Cool Mod"
+
+
+# ── manifest metadata fields ──────────────────────────────────────────────────
+
+def test_manifest_full_metadata(dirs):
+    """All four metadata fields parse correctly."""
+    mods_dir, game_pkg_dir = dirs
+    zip_fixture("manifest_full_metadata", mods_dir)
+    manager = make_manager(mods_dir, game_pkg_dir)
+    archives = manager.scan_archives()
+
+    assert len(archives) == 1
+    m = archives[0].manifest
+    assert m is not None
+    assert m.mod_name == "Full Metadata Mod"
+    assert m.author == "SomeAuthor"
+    assert m.version == "2.3.1"
+    assert m.url == "https://www.nexusmods.com/nioh3/mods/1"
+
+
+def test_manifest_partial_metadata(dirs):
+    """Only author and url present; mod_name and version are None."""
+    mods_dir, game_pkg_dir = dirs
+    zip_fixture("manifest_partial_metadata", mods_dir)
+    manager = make_manager(mods_dir, game_pkg_dir)
+    archives = manager.scan_archives()
+
+    assert len(archives) == 1
+    m = archives[0].manifest
+    assert m is not None
+    assert m.mod_name is None
+    assert m.author == "PartialAuthor"
+    assert m.version is None
+    assert m.url == "https://www.nexusmods.com/nioh3/mods/2"
+
+
+def test_manifest_no_metadata(dirs):
+    """Manifest with no metadata fields — all four are None."""
+    mods_dir, game_pkg_dir = dirs
+    zip_fixture("manifest_mod_common_only", mods_dir)
+    manager = make_manager(mods_dir, game_pkg_dir)
+    archives = manager.scan_archives()
+
+    assert len(archives) == 1
+    m = archives[0].manifest
+    assert m is not None
+    assert m.mod_name is None
+    assert m.author is None
+    assert m.version is None
+    assert m.url is None
+
+
 # ── conflict detection ────────────────────────────────────────────────────────
 
 def test_conflict_blocked(dirs, mock_yumia):
