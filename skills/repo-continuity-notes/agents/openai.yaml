@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Continuity Notes"
+  short_description: "Use repo memos for fast context recovery"
+  default_prompt: "Use $repo-continuity-notes to read the memo index whenever repo context is missing, then update the touched memos after approved changes."

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Nioh 3 Mod Manager — Entry Point"""
 
+import argparse
 import faulthandler
 import logging
 import os
@@ -48,10 +49,34 @@ def install_crash_handler(logger: logging.Logger, log_dir: Path):
     faulthandler.enable(open(crash_file, "w"), all_threads=True)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Nioh 3 Mod Manager")
+    parser.add_argument("--mods-dir")
+    parser.add_argument("--game-package-dir")
+    parser.add_argument("--settings-org", default="Nioh3ModManager")
+    parser.add_argument("--settings-app", default="Nioh3ModManager")
+    parser.add_argument("--no-persist-settings", action="store_true")
+    parser.add_argument("--window-title-suffix")
+    parser.add_argument("--mock-yumia", action="store_true")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
+    if args.mock_yumia:
+        os.environ["NIOH3MM_MOCK_YUMIA"] = "1"
+
     logger, log_dir = setup_logging()
     install_crash_handler(logger, log_dir)
     logger.info("Starting Nioh 3 Mod Manager")
 
     from gui import main
-    main(logger)
+    main(
+        logger,
+        mods_dir_override=args.mods_dir,
+        game_package_dir_override=args.game_package_dir,
+        settings_org=args.settings_org,
+        settings_app=args.settings_app,
+        persist_settings=not args.no_persist_settings,
+        window_title_suffix=args.window_title_suffix,
+    )

@@ -2,11 +2,13 @@
 dist/
 build/
 Nioh3ModManager.zip
+sandbox_envs/
 
 # Python
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
 
 # Bundled binaries (users download separately or build fetches them)
 assets/UnRAR.exe
